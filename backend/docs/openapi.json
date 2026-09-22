@@ -1,0 +1,347 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Sistema de Controle de Chamados Internos - API",
+    "description": "API REST para abertura, edição, listagem e distribuição automática de chamados internos de suporte.",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Cassiano Braz"
+    }
+  },
+  "servers": [
+    { "url": "http://localhost:8080", "description": "Ambiente local" }
+  ],
+  "tags": [
+    { "name": "tickets", "description": "Cadastro, edição, listagem e atribuição de chamados" },
+    { "name": "responsibles", "description": "Responsáveis disponíveis para atendimento" },
+    { "name": "health", "description": "Verificação de disponibilidade" }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": ["health"],
+        "summary": "Verificar disponibilidade da API",
+        "responses": {
+          "200": {
+            "description": "API disponível",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HealthResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tickets": {
+      "post": {
+        "tags": ["tickets"],
+        "summary": "Abrir um novo chamado",
+        "description": "Cria um chamado. Se responsible_id for omitido, o chamado é distribuído automaticamente ao responsável com menos chamados em aberto no momento.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateTicketRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Chamado criado",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Ticket" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "get": {
+        "tags": ["tickets"],
+        "summary": "Listar chamados",
+        "description": "Lista chamados com filtros, busca e paginação opcionais.",
+        "parameters": [
+          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["aberto", "em_andamento", "resolvido", "fechado"] } },
+          { "name": "priority", "in": "query", "schema": { "type": "string", "enum": ["baixa", "media", "alta"] } },
+          { "name": "responsible_id", "in": "query", "schema": { "type": "string" } },
+          { "name": "search", "in": "query", "description": "Busca (case-insensitive) no título e na descrição", "schema": { "type": "string" } },
+          { "name": "sort", "in": "query", "schema": { "type": "string", "enum": ["created_at_desc", "created_at_asc", "priority_desc"], "default": "created_at_desc" } },
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1, "minimum": 1 } },
+          { "name": "page_size", "in": "query", "schema": { "type": "integer", "default": 20, "minimum": 1, "maximum": 100 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Página de chamados",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TicketList" }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/v1/tickets/{id}": {
+      "parameters": [
+        { "name": "id", "in": "path", "required": true, "schema": { "type": "string" }, "description": "ID (UUID) do chamado" }
+      ],
+      "get": {
+        "tags": ["tickets"],
+        "summary": "Buscar um chamado por id",
+        "responses": {
+          "200": {
+            "description": "Chamado encontrado",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Ticket" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "put": {
+        "tags": ["tickets"],
+        "summary": "Editar um chamado",
+        "description": "Substitui título, descrição, prioridade e status do chamado.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateTicketRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Chamado atualizado",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Ticket" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/tickets/{id}/assign": {
+      "patch": {
+        "tags": ["tickets"],
+        "summary": "Atribuir responsável a um chamado",
+        "description": "Atribui manualmente o responsável informado em responsible_id. Quando o corpo é omitido ou responsible_id está vazio, o sistema atribui automaticamente ao responsável ativo com menos chamados em aberto.",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" }, "description": "ID (UUID) do chamado" }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AssignTicketRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Chamado reatribuído",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Ticket" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/responsibles": {
+      "get": {
+        "tags": ["responsibles"],
+        "summary": "Listar responsáveis",
+        "description": "Lista os responsáveis disponíveis para atribuição, com a contagem de chamados em aberto de cada um.",
+        "responses": {
+          "200": {
+            "description": "Lista de responsáveis",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Responsible" }
+                }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "post": {
+        "tags": ["responsibles"],
+        "summary": "Cadastrar um responsável",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateResponsibleRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Responsável criado",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Responsible" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/api/v1/responsibles/{id}": {
+      "parameters": [
+        { "name": "id", "in": "path", "required": true, "schema": { "type": "string" }, "description": "ID (UUID) do responsável" }
+      ],
+      "put": {
+        "tags": ["responsibles"],
+        "summary": "Editar um responsável",
+        "description": "Substitui nome, e-mail e o indicador de ativo do responsável.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateResponsibleRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Responsável atualizado",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Responsible" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "tags": ["responsibles"],
+        "summary": "Remover um responsável",
+        "responses": {
+          "204": { "description": "Responsável removido" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    }
+  },
+  "components": {
+    "responses": {
+      "BadRequest": {
+        "description": "Requisição ou dados inválidos",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "NotFound": {
+        "description": "Recurso não encontrado",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "InternalError": {
+        "description": "Erro interno do servidor",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      }
+    },
+    "schemas": {
+      "HealthResponse": {
+        "type": "object",
+        "properties": { "status": { "type": "string", "example": "ok" } }
+      },
+      "Error": {
+        "type": "object",
+        "properties": { "error": { "type": "string", "example": "chamado não encontrado" } }
+      },
+      "Priority": {
+        "type": "string",
+        "enum": ["baixa", "media", "alta"],
+        "description": "Prioridade do chamado"
+      },
+      "Status": {
+        "type": "string",
+        "enum": ["aberto", "em_andamento", "resolvido", "fechado"],
+        "description": "Status do chamado. 'aberto' e 'em_andamento' contam como carga em aberto para a distribuição automática; 'resolvido' e 'fechado' não contam."
+      },
+      "CreateTicketRequest": {
+        "type": "object",
+        "required": ["title", "description", "priority"],
+        "properties": {
+          "title": { "type": "string", "maxLength": 200, "example": "Impressora do 2º andar não funciona" },
+          "description": { "type": "string", "example": "A impressora trava toda vez que alguém tenta imprimir." },
+          "priority": { "$ref": "#/components/schemas/Priority" },
+          "responsible_id": {
+            "type": "string",
+            "description": "Opcional. Quando omitido, o chamado é distribuído automaticamente.",
+            "example": ""
+          }
+        }
+      },
+      "UpdateTicketRequest": {
+        "type": "object",
+        "required": ["title", "description", "priority", "status"],
+        "properties": {
+          "title": { "type": "string", "maxLength": 200 },
+          "description": { "type": "string" },
+          "priority": { "$ref": "#/components/schemas/Priority" },
+          "status": { "$ref": "#/components/schemas/Status" }
+        }
+      },
+      "AssignTicketRequest": {
+        "type": "object",
+        "properties": {
+          "responsible_id": {
+            "type": "string",
+            "description": "Opcional. Quando omitido/vazio, a atribuição é automática (menor carga em aberto).",
+            "example": ""
+          }
+        }
+      },
+      "Ticket": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid", "example": "01973b6e-7f2a-7e3b-9c1d-4a5b6c7d8e9f" },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "priority": { "$ref": "#/components/schemas/Priority" },
+          "status": { "$ref": "#/components/schemas/Status" },
+          "responsible_id": { "type": "string" },
+          "responsible_name": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "TicketList": {
+        "type": "object",
+        "properties": {
+          "data": { "type": "array", "items": { "$ref": "#/components/schemas/Ticket" } },
+          "total": { "type": "integer", "format": "int64" },
+          "page": { "type": "integer" },
+          "page_size": { "type": "integer" },
+          "total_pages": { "type": "integer", "format": "int64" }
+        }
+      },
+      "CreateResponsibleRequest": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "example": "Ana Souza" },
+          "email": { "type": "string", "example": "ana@codificar.dev" }
+        }
+      },
+      "UpdateResponsibleRequest": {
+        "type": "object",
+        "required": ["name", "active"],
+        "properties": {
+          "name": { "type": "string", "example": "Ana Souza" },
+          "email": { "type": "string", "example": "ana@codificar.dev" },
+          "active": { "type": "boolean" }
+        }
+      },
+      "Responsible": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid", "example": "01973b6c-1a2b-7c3d-8e4f-5a6b7c8d9e0f" },
+          "name": { "type": "string" },
+          "email": { "type": "string" },
+          "active": { "type": "boolean" },
+          "open_tickets": { "type": "integer", "format": "int64", "description": "Quantidade de chamados em aberto (status aberto ou em_andamento) sob este responsável." }
+        }
+      }
+    }
+  }
+}

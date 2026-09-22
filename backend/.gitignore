@@ -1,0 +1,16 @@
+# Binários
+/bin/
+/tmp/
+api
+api.exe
+
+# Cobertura de testes
+coverage*.out
+coverage*.html
+
+# Ambiente local
+.env
+
+# IDE
+.vscode/
+.idea/
