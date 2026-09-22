@@ -1,7 +1,6 @@
 # Binários
 /bin/
 /tmp/
-api
 api.exe
 
 # Cobertura de testes
